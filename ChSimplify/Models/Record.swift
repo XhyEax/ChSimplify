@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Record: Codable, Identifiable, Equatable {
+struct HistoryRecord: Codable, Identifiable, Equatable {
     let id: UUID
     let timestamp: Date
     /// OCR 识别出的原文（可能包含繁体字）
@@ -27,5 +27,10 @@ struct Record: Codable, Identifiable, Equatable {
         self.originalText = originalText
         self.convertedText = convertedText
         self.imageData = imageData
+    }
+
+    /// 归档中的稳定唯一 ID：记录创建时间（Unix 微秒）。
+    var creationID: String {
+        String(Int64((timestamp.timeIntervalSince1970 * 1_000_000).rounded()))
     }
 }

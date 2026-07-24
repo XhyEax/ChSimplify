@@ -10,7 +10,7 @@ import UIKit
 import Photos
 
 struct RecordDetailView: View {
-    let record: Record
+    let record: HistoryRecord
     @EnvironmentObject private var recordStore: RecordStore
     @Environment(\.dismiss) private var dismiss
     @State private var didCopy = false

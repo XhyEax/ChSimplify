@@ -177,9 +177,9 @@ struct CaptureView: View {
         let fullOriginal = lines.map(\.text).joined(separator: "\n")
         let fullSimplified = ChineseConverter.toSimplified(fullOriginal)
         let data = image.jpegData(compressionQuality: 0.8)
-        recordStore.add(Record(originalText: fullOriginal,
-                               convertedText: fullSimplified,
-                               imageData: data))
+        recordStore.add(HistoryRecord(originalText: fullOriginal,
+                                      convertedText: fullSimplified,
+                                      imageData: data))
         lastImage = image
         lastLines = lines
     }
