@@ -7,7 +7,7 @@
 
 import Foundation
 import UIKit
-import Vision
+@preconcurrency import Vision
 
 /// 一行识别结果：文字 + 在原图中的边界框（Vision 归一化坐标，原点在左下角）。
 struct RecognizedLine: Identifiable {

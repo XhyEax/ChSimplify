@@ -6,16 +6,19 @@
 //
 
 import SwiftUI
-import SwiftData
 import UIKit
 
 struct CaptureView: View {
-    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var recordStore: RecordStore
 
     @State private var showCamera = false
     @State private var showLibrary = false
     @State private var preview: PreviewPayload?
     @State private var pendingImage: UIImage?
+    @State private var editing: EditPayload?
+    @State private var editedImage: UIImage?
+    @State private var captureNextPending = false
+    @State private var pickNextPending = false
 
     // 上次识别缓存
     @State private var lastImage: UIImage?
@@ -38,9 +41,9 @@ struct CaptureView: View {
                     if let lastImage {
                         lastResultCard(lastImage)
                     } else {
-                        ContentUnavailableView("拍照或选图识别繁体字",
-                                               systemImage: "camera.viewfinder",
-                                               description: Text("识别图片中的文字，并自动转换为简体"))
+                        EmptyStateView(title: "拍照或选图识别繁体字",
+                                       systemImage: "camera.viewfinder",
+                                       description: "识别图片中的文字，并自动转换为简体")
                             .padding(.top, 40)
                     }
                 }
@@ -55,11 +58,38 @@ struct CaptureView: View {
                 ImagePicker(sourceType: .photoLibrary) { handlePicked($0) }
                     .ignoresSafeArea()
             }
-            .fullScreenCover(item: $preview) { payload in
+            .fullScreenCover(item: $editing, onDismiss: presentEdited) { payload in
+                ImageEditorView(original: payload.image,
+                                onDone: { edited in
+                                    editedImage = edited
+                                    editing = nil
+                                },
+                                onCancel: { editing = nil })
+            }
+            .fullScreenCover(item: $preview, onDismiss: presentCaptureNext) { payload in
                 TextPreviewView(image: payload.image,
                                 preRecognizedLines: payload.lines,
-                                onRecognized: { lines in saveAndCache(payload.image, lines) })
+                                onRecognized: { lines in saveAndCache(payload.image, lines) },
+                                onCaptureNext: {
+                                    captureNextPending = true
+                                    preview = nil
+                                },
+                                onPickNext: {
+                                    pickNextPending = true
+                                    preview = nil
+                                })
             }
+        }
+    }
+
+    /// 「拍下一张 / 选下一张」：预览关闭后重新打开相机或相册。
+    private func presentCaptureNext() {
+        if captureNextPending {
+            captureNextPending = false
+            showCamera = true
+        } else if pickNextPending {
+            pickNextPending = false
+            showLibrary = true
         }
     }
 
@@ -105,13 +135,17 @@ struct CaptureView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("简体").font(.caption).foregroundStyle(.secondary)
-                Text(ChineseConverter.toSimplified(lastOriginal))
-                    .textSelection(.enabled)
+                ReadOnlyTextEditor(text: ChineseConverter.toSimplified(lastOriginal))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("繁体").font(.caption).foregroundStyle(.secondary)
-                Text(ChineseConverter.toTraditional(lastOriginal))
-                    .textSelection(.enabled)
+            // 繁体与简体一致（无繁简差异）时，只显示简体。
+            let traditional = ChineseConverter.toTraditional(lastOriginal)
+            if traditional != ChineseConverter.toSimplified(lastOriginal) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("繁体").font(.caption).foregroundStyle(.secondary)
+                    ReadOnlyTextEditor(text: traditional)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -119,15 +153,23 @@ struct CaptureView: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    /// 选好图后记录待处理图片；等取图界面关闭再进入预览页，避免界面切换冲突。
+    /// 选好图后记录待处理图片；等取图界面关闭再进入编辑页，避免界面切换冲突。
     private func handlePicked(_ picked: UIImage) {
         pendingImage = picked
     }
 
+    /// 取图界面关闭后，进入图片编辑页（裁剪 / 旋转）。
     private func presentPending() {
         guard let pendingImage else { return }
         self.pendingImage = nil
-        preview = PreviewPayload(image: pendingImage)
+        editing = EditPayload(image: pendingImage)
+    }
+
+    /// 编辑页关闭后，带编辑结果进入识别预览页。
+    private func presentEdited() {
+        guard let editedImage else { return }
+        self.editedImage = nil
+        preview = PreviewPayload(image: editedImage)
     }
 
     /// 预览页 OCR 完成后回调：存入历史并更新「上次识别」缓存。
@@ -135,9 +177,9 @@ struct CaptureView: View {
         let fullOriginal = lines.map(\.text).joined(separator: "\n")
         let fullSimplified = ChineseConverter.toSimplified(fullOriginal)
         let data = image.jpegData(compressionQuality: 0.8)
-        modelContext.insert(Record(originalText: fullOriginal,
-                                   convertedText: fullSimplified,
-                                   imageData: data))
+        recordStore.add(Record(originalText: fullOriginal,
+                               convertedText: fullSimplified,
+                               imageData: data))
         lastImage = image
         lastLines = lines
     }
@@ -145,5 +187,5 @@ struct CaptureView: View {
 
 #Preview {
     CaptureView()
-        .modelContainer(for: Record.self, inMemory: true)
+        .environmentObject(RecordStore(inMemory: true))
 }

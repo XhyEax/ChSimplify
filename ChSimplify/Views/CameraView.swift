@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import AVFoundation
+@preconcurrency import AVFoundation
 import UIKit
 
 struct CameraView: UIViewControllerRepresentable {
@@ -107,10 +107,7 @@ final class CameraViewController: UIViewController, AVCapturePhotoCaptureDelegat
     }
 
     @objc private func capturePhoto() {
-        sessionQueue.async { [weak self] in
-            guard let self else { return }
-            self.photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: self)
-        }
+        photoOutput.capturePhoto(with: AVCapturePhotoSettings(), delegate: self)
     }
 
     @objc private func cancelTapped() {
@@ -123,7 +120,36 @@ final class CameraViewController: UIViewController, AVCapturePhotoCaptureDelegat
         guard let data = photo.fileDataRepresentation(),
               let image = UIImage(data: data) else { return }
         DispatchQueue.main.async { [weak self] in
-            self?.onCapture?(image)
+            guard let self else { return }
+            // 预览用 aspectFill 填满屏幕、裁掉了画面；按预览宽高比中心裁剪，做到所见即所得。
+            let aspect = self.previewLayer.map { $0.bounds.width / $0.bounds.height }
+                ?? (image.size.width / image.size.height)
+            self.onCapture?(image.centerCropped(toAspect: aspect))
         }
+    }
+}
+
+private extension UIImage {
+    func normalizedUp() -> UIImage {
+        if imageOrientation == .up { return self }
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in draw(in: CGRect(origin: .zero, size: size)) }
+    }
+
+    /// 按目标宽高比（宽/高）做中心裁剪。
+    func centerCropped(toAspect aspect: CGFloat) -> UIImage {
+        let img = normalizedUp()
+        guard let cg = img.cgImage, aspect > 0 else { return img }
+        let w = CGFloat(cg.width), h = CGFloat(cg.height)
+        var rect = CGRect(x: 0, y: 0, width: w, height: h)
+        if w / h > aspect {
+            let newW = h * aspect
+            rect = CGRect(x: (w - newW) / 2, y: 0, width: newW, height: h)
+        } else {
+            let newH = w / aspect
+            rect = CGRect(x: 0, y: (h - newH) / 2, width: w, height: newH)
+        }
+        guard let cropped = cg.cropping(to: rect.integral) else { return img }
+        return UIImage(cgImage: cropped, scale: img.scale, orientation: .up)
     }
 }

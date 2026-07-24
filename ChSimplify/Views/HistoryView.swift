@@ -2,26 +2,26 @@
 //  HistoryView.swift
 //  ChSimplify
 //
-//  「历史记录」Tab：展示过往识别结果，点击图片进入全屏预览页，行其余区域看详情，可删除。
+//  「历史记录」Tab：展示过往识别结果，点击整行进入详情页，可删除。
 //
 
 import SwiftUI
-import SwiftData
 import UIKit
 
 struct HistoryView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Record.timestamp, order: .reverse) private var records: [Record]
+    @EnvironmentObject private var recordStore: RecordStore
 
-    @State private var preview: PreviewPayload?
+    private var records: [Record] {
+        recordStore.records
+    }
 
     var body: some View {
         NavigationStack {
             Group {
                 if records.isEmpty {
-                    ContentUnavailableView("暂无记录",
-                                           systemImage: "clock",
-                                           description: Text("识别过的图片会出现在这里"))
+                    EmptyStateView(title: "暂无记录",
+                                   systemImage: "clock",
+                                   description: "识别过的图片会出现在这里")
                 } else {
                     List {
                         ForEach(records) { record in
@@ -37,33 +37,21 @@ struct HistoryView: View {
                     EditButton()
                 }
             }
-            .fullScreenCover(item: $preview) { payload in
-                TextPreviewView(image: payload.image, preRecognizedLines: payload.lines)
-            }
         }
     }
 
     private func row(_ record: Record) -> some View {
         let uiImage = record.imageData.flatMap { UIImage(data: $0) }
-        return HStack(spacing: 12) {
-            // 点击图片进入全屏预览页（绿框选字 + 查看简繁体）。
-            Button {
-                if let uiImage {
-                    preview = PreviewPayload(image: uiImage)
-                }
-            } label: {
+        // 点击整行（含缩略图）进入详情页。
+        return NavigationLink {
+            RecordDetailView(record: record)
+        } label: {
+            HStack(spacing: 12) {
                 thumbnail(uiImage)
-            }
-            .buttonStyle(.plain)
-
-            // 点击文字区域进入文字详情页。
-            NavigationLink {
-                RecordDetailView(record: record)
-            } label: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(record.convertedText)
                         .lineLimit(2)
-                    Text(record.timestamp.formatted(date: .abbreviated, time: .shortened))
+                    Text(record.timestamp.chineseDateTime)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -88,13 +76,11 @@ struct HistoryView: View {
     }
 
     private func deleteRecords(at offsets: IndexSet) {
-        for index in offsets {
-            modelContext.delete(records[index])
-        }
+        recordStore.delete(at: offsets)
     }
 }
 
 #Preview {
     HistoryView()
-        .modelContainer(for: Record.self, inMemory: true)
+        .environmentObject(RecordStore(inMemory: true))
 }

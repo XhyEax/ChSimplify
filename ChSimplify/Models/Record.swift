@@ -6,22 +6,23 @@
 //
 
 import Foundation
-import SwiftData
 
-@Model
-final class Record {
-    var timestamp: Date
+struct Record: Codable, Identifiable, Equatable {
+    let id: UUID
+    let timestamp: Date
     /// OCR 识别出的原文（可能包含繁体字）
-    var originalText: String
+    let originalText: String
     /// 转换后的简体结果
-    var convertedText: String
-    /// 原图，使用外部存储以免撑大数据库
-    @Attribute(.externalStorage) var imageData: Data?
+    let convertedText: String
+    /// 编辑后的原图数据
+    let imageData: Data?
 
-    init(timestamp: Date = Date(),
+    init(id: UUID = UUID(),
+         timestamp: Date = Date(),
          originalText: String,
          convertedText: String,
          imageData: Data? = nil) {
+        self.id = id
         self.timestamp = timestamp
         self.originalText = originalText
         self.convertedText = convertedText
